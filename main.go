@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// ---------- Database functions ----------
+//  Database functions
 
 func createURL(ctx context.Context, pool *pgxpool.Pool, shortCode string, longURL string) error {
 	_, err := pool.Exec(ctx,
@@ -41,7 +42,7 @@ func incrementClickCount(ctx context.Context, pool *pgxpool.Pool, shortCode stri
 	return err
 }
 
-// ---------- Short code generator ----------
+//the  Short code generator
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -54,7 +55,7 @@ func generateShortCode(length int) string {
 	return string(b)
 }
 
-// ---------- HTTP handlers ----------
+// HTTP handler
 
 type ShortenRequest struct {
 	LongURL string `json:"long_url"`
@@ -155,7 +156,7 @@ func redirectHandler(pool *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
 		longURL, err := rdb.Get(r.Context(), shortCode).Result()
 		if err == nil {
 			fmt.Println("Cache HIT for", shortCode)
-			go incrementClickCount(context.Background(), pool, shortCode) // ADDED HERE
+			go incrementClickCount(context.Background(), pool, shortCode)
 			http.Redirect(w, r, longURL, http.StatusFound)
 			return
 		}
@@ -183,13 +184,11 @@ func isValidURL(s string) bool {
 	return strings.HasPrefix(u.Scheme, "http")
 }
 
-// ---------- Main ----------
-
 func main() {
 	ctx := context.Background()
 
-	// ---------- Postgres connection setup ----------
-	dbURL := "postgres://postgres:mypassword@localhost:5433/urlshortener?sslmode=disable"
+	//  Postgres connection setup
+	dbURL := os.Getenv("DATABASE_URL")
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -199,22 +198,25 @@ func main() {
 
 	fmt.Println("Connected to Postgres successfully!")
 
-	// ---------- Redis connection setup ----------
+	// Redis connection setup
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: os.Getenv("REDIS_ADDR"),
 	})
-
 	_, err = rdb.Ping(ctx).Result()
 	if err != nil {
 		log.Fatal("Unable to connect to Redis:", err)
 	}
 	fmt.Println("Connected to Redis successfully!")
 
-	// ---------- Routes ----------
+	// Routes
 	http.HandleFunc("/stats/", statsHandler(pool))
 	http.HandleFunc("/shorten", shortenHandler(pool, rdb))
 	http.HandleFunc("/", redirectHandler(pool, rdb))
 
 	fmt.Println("Server running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
