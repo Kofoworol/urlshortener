@@ -102,9 +102,14 @@ func shortenHandler(pool *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
 			log.Println("Warning: failed to cache in Redis:", err)
 		}
 
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:8080"
+		}
+
 		resp := ShortenResponse{
 			ShortCode: shortCode,
-			ShortURL:  "http://localhost:8080/" + shortCode,
+			ShortURL:  baseURL + "/" + shortCode,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
